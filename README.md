@@ -19,18 +19,10 @@ monogit gives you a monorepo workflow without a monorepo. Run git operations acr
 ## 📦 Installation
 
 ```bash
-# Clone the repository
-git clone <repo-url>
-cd monogit
-
-# Install dependencies
-npm install
-
-# Link globally (optional)
-npm link
+npm i -g @frozencrow/monogit
 ```
 
-Once linked, `monogit` is available as a global command.
+Once installed, `monogit` is available as a global command.
 
 ---
 
