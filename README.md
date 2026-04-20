@@ -163,6 +163,31 @@ monogit pull origin main
 
 ---
 
+### `monogit fetch [remote] [branch]`
+
+Fetch updates from remote repositories.
+
+```bash
+# Fetch (default remote/branch)
+monogit fetch
+
+# Fetch from a specific remote and branch
+monogit fetch origin main
+```
+
+---
+
+### `monogit merge <branch>`
+
+Merge a branch into the current branch across all linked repositories.
+
+```bash
+# Merge a specific branch
+monogit merge feature/my-feature
+```
+
+---
+
 ### `monogit status`
 
 View the git status of all linked repositories in a split-screen layout.

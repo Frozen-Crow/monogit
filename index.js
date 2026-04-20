@@ -1,16 +1,24 @@
 #!/usr/bin/env node
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { Command } from 'commander';
 import { initCommand } from './src/commands/init.js';
 import { gitProxyCommand } from './src/commands/git-proxy.js';
 import { visualCommand } from './src/commands/visual.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const packageJsonPath = path.join(__dirname, 'package.json');
+const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 
 const program = new Command();
 
 program
   .name('monogit')
   .description('Manage multiple git repositories in a single folder')
-  .version('1.0.0');
+  .version(packageJson.version);
 
 // Init
 program
