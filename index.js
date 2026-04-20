@@ -104,4 +104,26 @@ program
     await gitProxyCommand('pull', args);
   });
 
+// Fetch
+program
+  .command('fetch')
+  .description('Run git fetch in all linked repositories')
+  .argument('[remote]', 'the remote name')
+  .argument('[branch]', 'the branch name')
+  .action(async (remote, branch) => {
+    const args = [];
+    if (remote) args.push(remote);
+    if (branch) args.push(branch);
+    await gitProxyCommand('fetch', args);
+  });
+
+// Merge
+program
+  .command('merge')
+  .description('Run git merge in all linked repositories')
+  .argument('<branch>', 'the branch name')
+  .action(async (branch) => {
+    await gitProxyCommand('merge', [branch]);
+  });
+
 program.parse(process.argv);
