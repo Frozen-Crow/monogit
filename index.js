@@ -7,6 +7,7 @@ import { Command } from 'commander';
 import { initCommand } from './src/commands/init.js';
 import { gitProxyCommand } from './src/commands/git-proxy.js';
 import { visualCommand } from './src/commands/visual.js';
+import { completionCommand } from './src/commands/completion.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +20,15 @@ program
   .name('monogit')
   .description('Manage multiple git repositories in a single folder')
   .version(packageJson.version);
+
+// Completion
+program
+  .command('completion')
+  .description('Generate shell completion script')
+  .argument('[shell]', 'the shell type (bash, zsh)', 'zsh')
+  .action(async (shell) => {
+    await completionCommand(shell, program);
+  });
 
 // Init
 program

@@ -13,6 +13,7 @@ monogit gives you a monorepo workflow without a monorepo. Run git operations acr
 - **Visual Split-Screen** — View `status`, `log`, and `diff` for every repo in partitioned terminal boxes
 - **Parallel Execution** — All commands run concurrently across repos for maximum speed
 - **Error Resilience** — One repo failing won't block the others
+- **Shell Autocompletion** — Support for Bash and Zsh tab completion
 
 ---
 
@@ -23,6 +24,22 @@ npm i -g @frozencrow/monogit
 ```
 
 Once installed, `monogit` is available as a global command.
+
+### Enable Tab Completion
+
+To enable tab completion for your shell, run the appropriate command:
+
+**For Zsh:**
+```bash
+echo 'source <(monogit completion zsh)' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**For Bash:**
+```bash
+echo 'source <(monogit completion bash)' >> ~/.bashrc
+source ~/.bashrc
+```
 
 ---
 
@@ -65,6 +82,20 @@ monogit push origin feature/my-feature
 ---
 
 ## 📖 Commands
+
+### `monogit completion [shell]`
+
+Generate shell completion script for Bash or Zsh.
+
+```bash
+# Generate for Zsh (default)
+monogit completion zsh
+
+# Generate for Bash
+monogit completion bash
+```
+
+---
 
 ### `monogit init`
 
