@@ -1,10 +1,12 @@
 import { Command } from 'commander';
 
 export async function completionCommand(shellType, program) {
-  const commands = program.commands.map(cmd => ({
-    name: cmd.name(),
-    description: cmd.description()
-  }));
+  const commands = program.commands
+    .filter(cmd => !cmd._hidden)
+    .map(cmd => ({
+      name: cmd.name(),
+      description: cmd.description()
+    }));
 
   if (shellType === 'bash') {
     generateBashCompletion(commands);
@@ -25,6 +27,14 @@ _monogit_completion() {
     cur="\${COMP_WORDS[COMP_CWORD]}"
     prev="\${COMP_WORDS[COMP_CWORD-1]}"
     opts="${commandNames} help"
+
+    case "\${prev}" in
+        checkout|merge|branch|push|pull)
+            local branches=$(monogit __complete "\${COMP_WORDS[@]:1}")
+            COMPREPLY=( $(compgen -W "\${branches}" -- \${cur}) )
+            return 0
+            ;;
+    esac
 
     if [[ \${COMP_CWORD} -eq 1 ]] ; then
         COMPREPLY=( $(compgen -W "\${opts}" -- \${cur}) )
@@ -49,6 +59,15 @@ _monogit() {
 
   if (( CURRENT == 2 )); then
     _describe -t commands 'monogit command' commands
+  elif (( CURRENT > 2 )); then
+    local cmd=\${words[2]}
+    case \$cmd in
+      checkout|branch|merge|push|pull)
+        local -a branches
+        branches=(\${(f)"\$(monogit __complete \${words[@]:1})"})
+        _describe -t branches 'branch' branches
+        ;;
+    esac
   fi
 }
 

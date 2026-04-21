@@ -8,6 +8,7 @@ import { initCommand } from './src/commands/init.js';
 import { gitProxyCommand } from './src/commands/git-proxy.js';
 import { visualCommand } from './src/commands/visual.js';
 import { completionCommand } from './src/commands/completion.js';
+import { completeAction } from './src/commands/complete.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +21,15 @@ program
   .name('monogit')
   .description('Manage multiple git repositories in a single folder')
   .version(packageJson.version);
+
+// Complete (hidden)
+program
+  .command('__complete', { hidden: true })
+  .description('Internal completion helper')
+  .argument('<args...>', 'command line arguments')
+  .action(async (args) => {
+    await completeAction(['monogit', ...args]);
+  });
 
 // Completion
 program
@@ -133,6 +143,21 @@ program
     if (remote) args.push(remote);
     if (branch) args.push(branch);
     await gitProxyCommand('fetch', args);
+  });
+
+// Branch
+program
+  .command('branch')
+  .description('Run git branch in all linked repositories')
+  .argument('[branch]', 'the branch name')
+  .option('-d, --delete', 'delete a branch')
+  .option('-D', 'force delete a branch')
+  .action(async (branch, options) => {
+    const args = [];
+    if (options.delete) args.push('-d');
+    if (options.D) args.push('-D');
+    if (branch) args.push(branch);
+    await gitProxyCommand('branch', args);
   });
 
 // Merge

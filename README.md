@@ -2,6 +2,8 @@
 
 **Manage multiple git repositories under a single parent folder with one command.**
 
+[![GitHub](https://img.shields.io/badge/GitHub-monogit-blue?logo=github)](https://github.com/Frozen-Crow/monogit)
+
 monogit gives you a monorepo workflow without a monorepo. Run git operations across all your linked repositories simultaneously — branching, committing, pushing, and more — with a single command.
 
 ---
@@ -27,7 +29,9 @@ Once installed, `monogit` is available as a global command.
 
 ### Enable Tab Completion
 
-To enable tab completion for your shell, run the appropriate command:
+Tab completion is **automatically set up** during installation for Zsh and Bash. 
+
+If it's not working, or if you need to set it up manually, you can run:
 
 **For Zsh:**
 ```bash
@@ -219,6 +223,28 @@ monogit merge feature/my-feature
 
 ---
 
+### `monogit branch [branch]`
+
+List, create, or delete branches across all linked repositories.
+
+```bash
+# List branches (relative to the first repo)
+monogit branch
+
+# Create a new branch
+monogit branch feature/new-idea
+
+# Delete a branch
+monogit branch -d stale-feature
+```
+
+| Option | Description |
+|--------|-------------|
+| `-d, --delete` | Delete a branch |
+| `-D` | Force delete a branch |
+
+---
+
 ### `monogit status`
 
 View the git status of all linked repositories in a split-screen layout.
@@ -286,10 +312,14 @@ monogit/
     ├── commands/
     │   ├── init.js             # Interactive repo linking
     │   ├── git-proxy.js        # Parallel proxy for standard git commands
-    │   └── visual.js           # Split-screen output for log/diff/status
+    │   ├── visual.js           # Split-screen output for log/diff/status
+    │   ├── completion.js       # Shell completion script generation
+    │   └── complete.js         # Dynamic branch completion logic
     └── utils/
         ├── config.js           # Read/write .monogit.json
         └── git.js              # Git command execution via execa
+├── scripts/
+│   └── postinstall.js          # Automatic completion setup during npm install
 ```
 
 ---
