@@ -19,6 +19,8 @@ export async function visualCommand(cmdName, args) {
     gitArgs = ['diff', '--color'];
   } else if (cmdName === 'status' && args.length === 0) {
     gitArgs = ['-c', 'color.status=always', 'status'];
+  } else if (cmdName === 'branch' && args.length === 0) {
+    gitArgs = ['branch', '--color'];
   }
 
   console.log(chalk.cyan(`\n🔍 Fetching ${cmdName.toUpperCase()} for ${repos.length} repositories...\n`));

@@ -153,6 +153,10 @@ program
   .option('-d, --delete', 'delete a branch')
   .option('-D', 'force delete a branch')
   .action(async (branch, options) => {
+    if (!branch && Object.keys(options).length === 0) {
+      await visualCommand('branch', []);
+      return;
+    }
     const args = [];
     if (options.delete) args.push('-d');
     if (options.D) args.push('-D');
