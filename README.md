@@ -21,6 +21,7 @@ monogit gives you a monorepo workflow without a monorepo. Run git operations acr
 - **Targeting** — Scope any command to a subset of repos with `--only`, `--except`, or named `--group`s
 - **Parallel & Resilient** — Commands run concurrently (bounded); one repo failing won't block the others
 - **Works Anywhere in the Tree** — Like git, monogit finds your workspace from any subdirectory
+- **MCP Server** — Drive the whole workspace from an LLM/agent via a built-in Model Context Protocol server
 - **Shell Autocompletion** — Bash, Zsh, Fish, and PowerShell
 
 ---
@@ -261,6 +262,47 @@ View recent history / unstaged changes for every repo in bordered boxes.
 
 Generate or install completion for `bash`, `zsh`, `fish`, or `powershell`.
 
+### `monogit mcp`
+
+Start the [MCP](https://modelcontextprotocol.io) server (JSON-RPC over stdio) so an LLM/agent can drive the workspace. See below.
+
+---
+
+## 🤖 Using monogit from an AI agent (MCP)
+
+monogit ships a built-in **Model Context Protocol** server, so assistants like Claude can manage your repos directly. It exposes the workspace as structured tools.
+
+Add it to your MCP client config (the server finds the workspace by walking up from `cwd`, just like the CLI — point `cwd` at your workspace or any subdirectory):
+
+```json
+{
+  "mcpServers": {
+    "monogit": {
+      "command": "monogit",
+      "args": ["mcp"],
+      "cwd": "/path/to/your/workspace"
+    }
+  }
+}
+```
+
+> No global install? Use `"command": "npx"`, `"args": ["-y", "@frozencrow/monogit", "mcp"]`. A standalone `monogit-mcp` binary is also provided.
+
+**Tools exposed:**
+
+| Tool | What it does |
+|------|--------------|
+| `monogit_status` | Per-repo branch, ahead/behind, dirty counts, in-progress ops |
+| `monogit_list_repos` | Linked repos with remote/branch/presence |
+| `monogit_exec` | Run arbitrary git args across all repos |
+| `monogit_commit` | Commit across repos (with optional Change-Id linking) |
+| `monogit_checkout` / `monogit_push` / `monogit_pull` | Branch & sync operations |
+| `monogit_show` | Look up a cross-repo change by id |
+| `monogit_tidy` | Scan for orphaned branches (read-only unless `execute: true`) |
+| `monogit_pr` | Open pull requests via the GitHub CLI |
+
+Every tool accepts `only` / `except` / `group` to scope which repos it touches. Destructive operations are gated: `monogit_tidy` is a dry run unless you pass `execute: true`.
+
 ---
 
 ## ⚙️ Configuration
@@ -312,6 +354,13 @@ monogit/
 │   │   ├── pr.js               # Open pull requests via gh
 │   │   ├── completion.js       # Completion scripts (bash/zsh/fish/pwsh)
 │   │   └── complete.js         # Dynamic branch completion logic
+│   ├── core/                   # Data-returning logic shared by CLI + MCP
+│   │   ├── commit.js           # Linked commit across repos
+│   │   ├── tidy.js             # Orphan scan & delete
+│   │   ├── changes.js          # Change-Id lookup
+│   │   └── pr.js               # Pull-request creation
+│   ├── mcp/
+│   │   └── server.js           # Dependency-free MCP server (stdio)
 │   └── utils/
 │       ├── config.js           # Config discovery, resolution & filtering
 │       ├── git.js              # Git command execution & introspection

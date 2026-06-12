@@ -129,6 +129,15 @@ repoOpts(
     .option('--json', 'output machine-readable JSON')
 ).action(showCommand);
 
+// MCP server (lets LLMs/agents drive monogit over stdio)
+program
+  .command('mcp')
+  .description('Start the monogit MCP server (JSON-RPC over stdio) for LLM/agent use')
+  .action(async () => {
+    const { startMcpServer } = await import('./src/mcp/server.js');
+    startMcpServer();
+  });
+
 // Log
 repoOpts(program.command('log').description('Show git log for all linked repositories')).action(async (options) => {
   await visualCommand('log', [], options);

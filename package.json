@@ -4,7 +4,8 @@
   "type": "module",
   "main": "index.js",
   "bin": {
-    "monogit": "index.js"
+    "monogit": "index.js",
+    "monogit-mcp": "src/mcp/server.js"
   },
   "scripts": {
     "test": "node --test",

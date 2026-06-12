@@ -2,53 +2,16 @@ import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
 import { resolveRepos, getProtectedPatterns, parseList } from '../utils/config.js';
-import { makeMatcher } from '../utils/match.js';
 import { mapLimit } from '../utils/concurrency.js';
 import { noReposNotice, concurrencyFrom } from '../utils/ui.js';
-import {
-  getCurrentBranch,
-  getDefaultBranch,
-  fetchPrune,
-  listLocalBranches,
-  listMergedBranches,
-  deleteBranch,
-} from '../utils/git.js';
+import { fetchPrune } from '../utils/git.js';
+import { scanRepoForOrphans, deleteCandidate } from '../core/tidy.js';
 
 const CATEGORY = {
   gone: { label: 'gone', color: chalk.yellow },
   merged: { label: 'merged', color: chalk.green },
   stale: { label: 'stale', color: chalk.gray },
 };
-
-async function scanRepo(repo, want, staleDays, protectedPatterns) {
-  const cwd = repo.path;
-  const current = await getCurrentBranch(cwd);
-  const base = await getDefaultBranch(cwd);
-
-  const isProtected = makeMatcher([
-    ...protectedPatterns,
-    ...(base ? [base] : []),
-    ...(current ? [current] : []),
-  ]);
-
-  const branches = await listLocalBranches(cwd);
-  const merged = want.merged && base ? await listMergedBranches(cwd, base) : new Set();
-  const nowSec = Date.now() / 1000;
-
-  const candidates = [];
-  for (const b of branches) {
-    if (isProtected(b.name)) continue;
-
-    let category = null;
-    if (want.gone && b.gone) category = 'gone';
-    else if (want.merged && b.name !== base && merged.has(b.name)) category = 'merged';
-    else if (want.stale && b.unix && nowSec - b.unix > staleDays * 86400) category = 'stale';
-
-    if (category) candidates.push({ repo: repo.name, cwd, name: b.name, rel: b.rel, category });
-  }
-
-  return { repo: repo.name, base, current, candidates };
-}
 
 function renderReport(scans) {
   for (const scan of scans) {
@@ -113,7 +76,7 @@ export async function tidyCommand(options) {
 
   const scanSpinner = ora('Scanning branches...').start();
   const settled = await mapLimit(repos, concurrencyFrom(options), (repo) =>
-    scanRepo(repo, want, staleDays, protectedPatterns)
+    scanRepoForOrphans(repo, want, staleDays, protectedPatterns)
   );
   scanSpinner.stop();
   const scans = settled.map((e) => (e.status === 'fulfilled' ? e.value : { repo: '?', candidates: [] }));
@@ -190,9 +153,8 @@ export async function tidyCommand(options) {
   let deleted = 0;
   let failed = 0;
   for (const c of selected) {
-    const force = c.category === 'gone';
-    const r = await deleteBranch(c.cwd, c.name, force);
-    if (r.exitCode === 0) {
+    const res = await deleteCandidate(c);
+    if (res.ok) {
       deleted++;
       console.log(`${chalk.green('✔')} ${chalk.blue(c.repo)} ${chalk.gray('—')} deleted ${chalk.bold(c.name)}`);
     } else {
@@ -200,9 +162,8 @@ export async function tidyCommand(options) {
       console.log(
         `${chalk.red('✖')} ${chalk.blue(c.repo)} ${chalk.gray('—')} could not delete ${chalk.bold(c.name)}`
       );
-      const detail = (r.all || '').trim();
-      if (detail) console.log(chalk.red(`    ${detail.replace(/\n/g, '\n    ')}`));
-      if (!force) console.log(chalk.gray('    (not fully merged — use `git branch -D` to force)'));
+      if (res.output) console.log(chalk.red(`    ${res.output.replace(/\n/g, '\n    ')}`));
+      if (!res.force) console.log(chalk.gray('    (not fully merged — use `git branch -D` to force)'));
     }
   }
 
