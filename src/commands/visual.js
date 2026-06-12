@@ -1,17 +1,19 @@
 import chalk from 'chalk';
 import boxen from 'boxen';
 import { runGitCommand } from '../utils/git.js';
-import { getRepos } from '../utils/config.js';
+import { resolveRepos } from '../utils/config.js';
+import { mapLimit } from '../utils/concurrency.js';
+import { noReposNotice, concurrencyFrom } from '../utils/ui.js';
 
-export async function visualCommand(cmdName, args) {
-  const repos = await getRepos();
+export async function visualCommand(cmdName, args, options = {}) {
+  const repos = await resolveRepos(options);
 
   if (repos.length === 0) {
-    console.log(chalk.red('\n❌ No repositories linked. Run `monogit init` first.\n'));
+    await noReposNotice(options);
     return;
   }
 
-  // Determine git args based on command type
+  // Sensible defaults for the read-only "visual" commands.
   let gitArgs = [cmdName, ...args];
   if (cmdName === 'log' && args.length === 0) {
     gitArgs = ['log', '--oneline', '-n', '5', '--graph', '--color'];
@@ -25,32 +27,27 @@ export async function visualCommand(cmdName, args) {
 
   console.log(chalk.cyan(`\n🔍 Fetching ${cmdName.toUpperCase()} for ${repos.length} repositories...\n`));
 
-  // Run all repos in parallel
-  const results = await Promise.allSettled(
-    repos.map(async (repo) => {
-      const result = await runGitCommand(repo, gitArgs);
-      return { repo, result };
-    })
-  );
+  const results = await mapLimit(repos, concurrencyFrom(options), async (repo) => {
+    const result = await runGitCommand(repo.path, gitArgs);
+    return { repo, result };
+  });
 
-  // Render boxes in order
   for (const entry of results) {
-    if (entry.status === 'fulfilled') {
-      const { repo, result } = entry.value;
-      const output = result.all || chalk.gray('(No output)');
-
-      const boxBuffer = boxen(output, {
-        title: chalk.bold.blue(` Repo: ${repo} `),
+    if (entry.status !== 'fulfilled') {
+      console.log(chalk.red(`\n✖ Error: ${entry.reason}\n`));
+      continue;
+    }
+    const { repo, result } = entry.value;
+    const output = result.all || chalk.gray('(No output)');
+    console.log(
+      boxen(output, {
+        title: chalk.bold.blue(` Repo: ${repo.name} `),
         titleAlignment: 'left',
         padding: 1,
         margin: { top: 1, bottom: 1, left: 0, right: 0 },
         borderStyle: 'round',
         borderColor: result.exitCode === 0 ? 'cyan' : 'red',
-      });
-
-      console.log(boxBuffer);
-    } else {
-      console.log(chalk.red(`\n✖ Error: ${entry.reason}\n`));
-    }
+      })
+    );
   }
 }

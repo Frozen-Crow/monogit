@@ -4,18 +4,24 @@
 
 [![GitHub](https://img.shields.io/badge/GitHub-monogit-blue?logo=github)](https://github.com/Frozen-Crow/monogit)
 
-monogit gives you a monorepo workflow without a monorepo. Run git operations across all your linked repositories simultaneously — branching, committing, pushing, and more — with a single command.
+monogit gives you a monorepo workflow without a monorepo. Run git operations across all your linked repositories simultaneously — branching, committing, pushing, opening PRs, and more — with a single command.
 
 ---
 
 ## ✨ Features
 
-- **Interactive Setup** — Scan a directory, detect existing repos, and optionally initialize new ones
+- **Interactive Setup** — Recursively scan a directory, detect existing repos, and optionally initialize new ones
 - **Unified Git Commands** — Run `checkout`, `add`, `commit`, `push`, `pull` across all repos at once
-- **Visual Split-Screen** — View `status`, `log`, and `diff` for every repo in partitioned terminal boxes
-- **Parallel Execution** — All commands run concurrently across repos for maximum speed
-- **Error Resilience** — One repo failing won't block the others
-- **Shell Autocompletion** — Support for Bash and Zsh tab completion
+- **Cross-Repo Commits** — One shared editor message, and `Monogit-Change-Id` trailers that link a logical change across every repo
+- **Status Dashboard** — One compact table: branch, ahead/behind, dirty count, and in-progress operations per repo
+- **Branch Tidy** — Scan for and safely clean up orphaned branches (merged, or with a deleted upstream)
+- **Pull Requests** — Open PRs across every repo with one command (via the GitHub CLI)
+- **Arbitrary Commands** — `exec` any git command or `run` any shell command everywhere
+- **Workspace Manifest** — Record remotes so a teammate can `clone` the whole workspace in one step
+- **Targeting** — Scope any command to a subset of repos with `--only`, `--except`, or named `--group`s
+- **Parallel & Resilient** — Commands run concurrently (bounded); one repo failing won't block the others
+- **Works Anywhere in the Tree** — Like git, monogit finds your workspace from any subdirectory
+- **Shell Autocompletion** — Bash, Zsh, Fish, and PowerShell
 
 ---
 
@@ -29,21 +35,19 @@ Once installed, `monogit` is available as a global command.
 
 ### Enable Tab Completion
 
-Tab completion is **automatically set up** during installation for Zsh and Bash. 
+Completion is **opt-in**. Install it for your shell:
 
-If it's not working, or if you need to set it up manually, you can run:
-
-**For Zsh:**
 ```bash
-echo 'source <(monogit completion zsh)' >> ~/.zshrc
-source ~/.zshrc
+monogit completion install zsh     # or: bash, fish
 ```
 
-**For Bash:**
-```bash
-echo 'source <(monogit completion bash)' >> ~/.bashrc
-source ~/.bashrc
+For PowerShell, add this to your `$PROFILE`:
+
+```powershell
+monogit completion powershell | Out-String | Invoke-Expression
 ```
+
+You can also print the script and source it yourself, e.g. `source <(monogit completion zsh)`.
 
 ---
 
@@ -57,247 +61,234 @@ Navigate to a parent directory that contains (or will contain) your git reposito
 monogit init
 ```
 
-This will:
-- Scan all subdirectories
-- Detect which ones are already git repositories
-- Let you select which repos to link
-- Offer to `git init` any non-git directories you want to include
-- Save the configuration to `.monogit.json`
+This will scan for git repositories (recursively, up to `--depth`, default 3), let you select which to link, offer to `git init` any non-git folders, record each repo's remote/branch, and save the configuration to `.monogit.json`.
 
-### 2. Start working across repos
+### 2. Work across repos
 
 ```bash
-# Create a new branch in all repos
-monogit checkout -b feature/my-feature
+monogit checkout -b feature/my-feature   # branch everywhere
+monogit status                           # dashboard of all repos
+monogit add .                            # stage everything
+monogit commit -m "implement feature"    # commit everywhere
+monogit push origin feature/my-feature   # push everywhere
+monogit pr --fill                        # open PRs everywhere
+```
 
-# Check status across all repos
-monogit status
+---
 
-# Stage all changes
-monogit add .
+## 🎯 Targeting a subset of repos
 
-# Commit everywhere
-monogit commit -m "implement shared feature"
+Every multi-repo command accepts these filters:
 
-# Push to all remotes
-monogit push origin feature/my-feature
+| Option | Description |
+|--------|-------------|
+| `--only <repos>` | Comma-separated repos to include (by name or path) |
+| `--except <repos>` | Comma-separated repos to exclude |
+| `--group <groups>` | Comma-separated named groups (defined in `.monogit.json`) |
+| `-c, --concurrency <n>` | Max repos to process in parallel (default 8) |
+
+```bash
+monogit status --only api,web
+monogit push --group backend
+monogit pull --except docs
 ```
 
 ---
 
 ## 📖 Commands
 
-### `monogit completion [shell]`
+### `monogit init [--depth <n>]`
 
-Generate shell completion script for Bash or Zsh.
+Interactively scan for and link repositories. Records remotes so the workspace can be re-cloned later.
 
-```bash
-# Generate for Zsh (default)
-monogit completion zsh
+### `monogit status [--full] [--json]`
 
-# Generate for Bash
-monogit completion bash
+Show a compact **status dashboard** across all repos:
+
+```
+  REPO    BRANCH        SYNC      CHANGES   STATE
+  api     main          ✓         clean
+  web     feature/wip   ↑2 ↓0     +1 ~3
+  infra   main          ↑0 ↓4     ?2        ⚠ rebasing
 ```
 
----
+- **SYNC** — `↑ahead ↓behind` vs upstream (`✓` up to date, `—` no upstream)
+- **CHANGES** — `+staged ~unstaged ?untracked` (only non-zero parts shown; `clean` when none)
+- **STATE** — flags an in-progress rebase / merge / cherry-pick
 
-### `monogit init`
+Use `--full` for the original per-repo boxed `git status`, or `--json` for machine-readable output.
 
-Interactively configure which repositories to manage.
+### `monogit checkout <branch> [-b]`
 
-```bash
-monogit init
-```
-
-- Scans the current directory for subdirectories
-- Presents existing git repos for selection
-- Offers to initialize git in non-repo directories
-- Saves configuration to `.monogit.json`
-
----
-
-### `monogit checkout <branch>`
-
-Switch branches across all linked repositories.
-
-```bash
-# Switch to an existing branch
-monogit checkout main
-
-# Create and switch to a new branch
-monogit checkout -b feature/new-work
-```
-
-| Option | Description |
-|--------|-------------|
-| `-b` | Create a new branch |
-
----
+Switch (or, with `-b`, create) branches across all repos.
 
 ### `monogit add <paths...>`
 
-Stage files across all linked repositories.
+Stage files across all repos.
 
-```bash
-# Stage everything
-monogit add .
+### `monogit commit [-m <message>] [-a] [paths...]`
 
-# Stage specific files
-monogit add src/ README.md
+Commit staged changes everywhere. Repos with nothing to commit are reported as **skipped**, not failed.
+
+If you omit `-m`, monogit opens your editor **once** (respecting `core.editor`/`$EDITOR`), captures a single message, and applies it to every repo. An empty message aborts the whole batch. Pass `-m` multiple times for multi-paragraph messages.
+
+**Cross-repo linking.** A logical change usually spans several repos, but each repo gets its own commit with nothing tying them together. With linking enabled, every commit in the batch is stamped with a shared `Monogit-Change-Id` trailer plus the list of participating repos:
+
+```
+feat: add login
+
+Monogit-Change-Id: 01JA2B3C4D5E6F7G8H9J0K1M2N
+Monogit-Repos: api@feature/login, web@feature/login
 ```
 
----
-
-### `monogit commit`
-
-Commit staged changes across all linked repositories.
-
-```bash
-# Commit staged changes
-monogit commit -m "your commit message"
-
-# Stage and commit all tracked changes
-monogit commit -am "your commit message"
-
-# Commit specific paths
-monogit commit -m "update docs" docs/
-```
+Only repos that actually commit are listed. Enable it per-workspace with `"commit": { "link": true }` in `.monogit.json`, or per-commit with `--link` / `--no-link`. Look a change back up with [`monogit show`](#monogit-show-change-id).
 
 | Option | Description |
 |--------|-------------|
-| `-m <message>` | **Required.** Commit message |
-| `-a` | Automatically stage modified/deleted files |
+| `-m, --message <msg>` | Commit message (repeatable; opens an editor if omitted) |
+| `-a` | Stage all modified/deleted tracked files |
+| `--link` / `--no-link` | Force linking on/off for this commit (overrides config) |
 
----
+### `monogit show [change-id]`
 
-### `monogit push [remote] [branch]`
+Show every commit across all repos that shares a `Monogit-Change-Id` — reconstructing the atomic change a monorepo would give you for free. With no id, shows the most recent linked change.
 
-Push commits to remote repositories.
+```
+$ monogit show 01JA2B3C4D5E6F7G8H9J0K1M2N
+🔗 Change 01JA2B3C4D5E6F7G8H9J0K1M2N  (2 repos)
 
-```bash
-# Push (default remote/branch)
-monogit push
-
-# Push to a specific remote and branch
-monogit push origin main
+  api  a1b2c3d  feat: add login endpoint (2 minutes ago)
+  web  d4e5f6a  feat: add login form (2 minutes ago)
 ```
 
----
+Accepts an id prefix, and `--json` for machine-readable output.
 
-### `monogit pull [remote] [branch]`
+### `monogit push / pull / fetch [remote] [branch]`
 
-Pull updates from remote repositories.
+Sync with remotes.
 
-```bash
-# Pull (default remote/branch)
-monogit pull
+### `monogit branch [branch] [-d|-D]`
 
-# Pull from a specific remote and branch
-monogit pull origin main
-```
-
----
-
-### `monogit fetch [remote] [branch]`
-
-Fetch updates from remote repositories.
-
-```bash
-# Fetch (default remote/branch)
-monogit fetch
-
-# Fetch from a specific remote and branch
-monogit fetch origin main
-```
-
----
+List branches (no args), or create / delete a branch across all repos.
 
 ### `monogit merge <branch>`
 
-Merge a branch into the current branch across all linked repositories.
+Merge a branch into the current branch across all repos.
+
+### `monogit tidy [options]`
+
+Scan every repo for **orphaned branches** and clean them up. By default targets two high-confidence categories:
+
+- **`gone`** — the upstream was deleted on the remote (PR merged, branch reaped). Force-deleted, since squash-merges leave these "unmerged" locally.
+- **`merged`** — already merged into the default branch. Safely deleted with `git branch -d`.
+
+The current, default, and any `protected` branches are never touched. Runs `git fetch --prune` first (so `gone` is accurate) and confirms before deleting.
 
 ```bash
-# Merge a specific branch
-monogit merge feature/my-feature
-```
-
----
-
-### `monogit branch [branch]`
-
-List, create, or delete branches across all linked repositories.
-
-```bash
-# List branches (relative to the first repo)
-monogit branch
-
-# Create a new branch
-monogit branch feature/new-idea
-
-# Delete a branch
-monogit branch -d stale-feature
+monogit tidy                  # scan + interactive cleanup
+monogit tidy --dry-run        # report only
+monogit tidy --stale 60       # also branches idle 60+ days
+monogit tidy --yes            # non-interactive (CI)
 ```
 
 | Option | Description |
 |--------|-------------|
-| `-d, --delete` | Delete a branch |
-| `-D` | Force delete a branch |
+| `--gone` / `--merged` / `--stale [days]` | Choose categories (default: gone + merged) |
+| `--no-fetch` | Skip `git fetch --prune` |
+| `--dry-run` | Report without deleting |
+| `-y, --yes` | Delete without the prompt |
+| `--protect <branches>` | Names/globs to never delete (e.g. `develop,release/*`) |
+| `--json` | Machine-readable output |
 
----
+### `monogit pr [options]`
 
-### `monogit status`
-
-View the git status of all linked repositories in a split-screen layout.
-
-```bash
-monogit status
-```
-
-Each repository's status is displayed in its own bordered box for easy scanning.
-
----
-
-### `monogit log`
-
-View recent commit history across all repositories.
+Open pull requests across all repos using the [GitHub CLI](https://cli.github.com) (`gh`). Pushes the current branch, then opens a PR for each repo that has commits ahead of its base. Repos on the base branch or with no new commits are skipped.
 
 ```bash
-monogit log
+monogit pr --fill                          # title/body from commits
+monogit pr --title "Bump deps" --body "…"  # explicit
+monogit pr --draft --base develop
+monogit pr --web                           # finish each in the browser
 ```
 
-Shows the last 5 commits per repo in a compact graph format, each in a separate box.
+| Option | Description |
+|--------|-------------|
+| `--title` / `--body` | PR title / body |
+| `--base <branch>` | Base branch (defaults to each repo's default) |
+| `--fill` | Fill from commit messages |
+| `--draft` | Create draft PRs |
+| `--web` | Open each PR in the browser |
+| `--no-push` | Don't push before creating |
 
----
+### `monogit exec -- <git args>`
 
-### `monogit diff`
-
-View unstaged changes across all repositories.
+Run an **arbitrary git command** across all repos — anything monogit doesn't wrap directly.
 
 ```bash
-monogit diff
+monogit exec -- stash list
+monogit exec -- tag v1.2.0
+monogit exec --only api -- reset --hard origin/main
 ```
 
-Displays diffs for each repository in separate bordered boxes with color-coded output.
+### `monogit run "<command>"`
+
+Run an **arbitrary shell command** in each repo.
+
+```bash
+monogit run "npm test"
+monogit run "rm -rf node_modules"
+```
+
+### `monogit clone`
+
+Clone any linked repo that has a recorded remote but is missing locally — reconstitutes a whole workspace from a committed `.monogit.json`.
+
+### `monogit repos <list|add|remove>`
+
+Manage linked repositories without re-running `init`.
+
+```bash
+monogit repos list           # show repos, remotes, presence, and groups
+monogit repos add ./api      # link a repo (records its remote)
+monogit repos remove api     # unlink (files untouched)
+```
+
+### `monogit log` / `monogit diff`
+
+View recent history / unstaged changes for every repo in bordered boxes.
+
+### `monogit completion [shell] [--install]`
+
+Generate or install completion for `bash`, `zsh`, `fish`, or `powershell`.
 
 ---
 
 ## ⚙️ Configuration
 
-monogit stores its configuration in a `.monogit.json` file in the working directory:
+monogit stores its configuration in a `.monogit.json` file, discovered by walking **up** from your current directory (like git's `.git`):
 
 ```json
 {
   "repos": [
-    "api",
-    "client",
-    "shared-lib"
-  ]
+    "shared-lib",
+    { "path": "api", "remote": "git@github.com:acme/api.git", "branch": "main" },
+    { "path": "web", "remote": "git@github.com:acme/web.git", "branch": "main" }
+  ],
+  "groups": {
+    "backend": ["api", "shared-lib"],
+    "frontend": ["web"]
+  },
+  "protected": ["develop", "release/*"],
+  "commit": { "link": true }
 }
 ```
 
-Each entry is a relative path to a subdirectory containing a git repository.
+- **`repos`** — a relative path string, or an object with `path` plus an optional `remote`/`branch` (used by `monogit clone`).
+- **`groups`** — named sets of repos for `--group`.
+- **`protected`** — branches `monogit tidy` will never delete (the current and default branches are always protected too).
+- **`commit.link`** — when `true`, `monogit commit` adds cross-repo `Monogit-Change-Id` trailers by default (override per-commit with `--no-link`).
 
-> **Tip:** You can commit `.monogit.json` to share configuration with your team, or add it to `.gitignore` if it's personal.
+> **Tip:** Commit `.monogit.json` to share the workspace with your team — they can `monogit clone` to get every repo.
 
 ---
 
@@ -305,22 +296,43 @@ Each entry is a relative path to a subdirectory containing a git repository.
 
 ```
 monogit/
-├── index.js                    # CLI entry point
-├── package.json
-├── .monogit.json               # Generated config (per workspace)
-└── src/
-    ├── commands/
-    │   ├── init.js             # Interactive repo linking
-    │   ├── git-proxy.js        # Parallel proxy for standard git commands
-    │   ├── visual.js           # Split-screen output for log/diff/status
-    │   ├── completion.js       # Shell completion script generation
-    │   └── complete.js         # Dynamic branch completion logic
-    └── utils/
-        ├── config.js           # Read/write .monogit.json
-        └── git.js              # Git command execution via execa
-├── scripts/
-│   └── postinstall.js          # Automatic completion setup during npm install
+├── index.js                    # CLI entry point & command wiring
+├── src/
+│   ├── commands/
+│   │   ├── init.js             # Interactive (recursive) repo linking
+│   │   ├── git-proxy.js        # Parallel proxy for standard git commands
+│   │   ├── commit.js           # Commit with editor fallback & cross-repo linking
+│   │   ├── show.js             # Look up a linked change across repos
+│   │   ├── visual.js           # Boxed output for log / diff / branch
+│   │   ├── dashboard.js        # Status dashboard table
+│   │   ├── tidy.js             # Orphaned-branch scan & cleanup
+│   │   ├── exec.js             # Arbitrary git / shell passthrough
+│   │   ├── clone.js            # Clone missing repos from the manifest
+│   │   ├── repos.js            # repos list / add / remove
+│   │   ├── pr.js               # Open pull requests via gh
+│   │   ├── completion.js       # Completion scripts (bash/zsh/fish/pwsh)
+│   │   └── complete.js         # Dynamic branch completion logic
+│   └── utils/
+│       ├── config.js           # Config discovery, resolution & filtering
+│       ├── git.js              # Git command execution & introspection
+│       ├── editor.js           # Capture a commit message via $EDITOR
+│       ├── link.js             # Change-Id generation & trailers
+│       ├── concurrency.js      # Bounded parallel map
+│       ├── match.js            # Glob matcher for protected branches
+│       └── ui.js               # Shared CLI helpers
+├── test/                       # node:test suites
+└── scripts/postinstall.js
 ```
+
+---
+
+## 🧪 Development
+
+```bash
+npm test        # node --test
+```
+
+CI runs the suite on Node 18, 20, and 22.
 
 ---
 

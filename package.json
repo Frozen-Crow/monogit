@@ -7,8 +7,17 @@
     "monogit": "index.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test",
     "postinstall": "node scripts/postinstall.js"
+  },
+  "files": [
+    "index.js",
+    "src",
+    "scripts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
   },
   "author": "",
   "license": "ISC",
