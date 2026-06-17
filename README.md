@@ -14,6 +14,7 @@ monogit gives you a monorepo workflow without a monorepo. Run git operations acr
 - **Unified Git Commands** — Run `checkout`, `add`, `commit`, `push`, `pull` across all repos at once
 - **Cross-Repo Commits** — One shared editor message, and `Monogit-Change-Id` trailers that link a logical change across every repo
 - **Status Dashboard** — One compact table: branch, ahead/behind, dirty count, and in-progress operations per repo
+- **Live Watch TUI** — An auto-refreshing, interactive control center for all repos with one-key actions
 - **Branch Tidy** — Scan for and safely clean up orphaned branches (merged, or with a deleted upstream)
 - **Pull Requests** — Open PRs across every repo with one command (via the GitHub CLI)
 - **Arbitrary Commands** — `exec` any git command or `run` any shell command everywhere
@@ -22,6 +23,7 @@ monogit gives you a monorepo workflow without a monorepo. Run git operations acr
 - **Parallel & Resilient** — Commands run concurrently (bounded); one repo failing won't block the others
 - **Works Anywhere in the Tree** — Like git, monogit finds your workspace from any subdirectory
 - **MCP Server** — Drive the whole workspace from an LLM/agent via a built-in Model Context Protocol server
+- **Voice Commands** — Hands-free, continuous voice control in the terminal via local, offline speech recognition
 - **Shell Autocompletion** — Bash, Zsh, Fish, and PowerShell
 
 ---
@@ -119,6 +121,34 @@ Show a compact **status dashboard** across all repos:
 
 Use `--full` for the original per-repo boxed `git status`, or `--json` for machine-readable output.
 
+### `monogit watch`
+
+A live, **interactive** dashboard — the workspace control center. It auto-refreshes (every 5s by default, `--interval`), lets you navigate repos, and run common actions with a single keypress.
+
+```text
+ monogit watch  3 repos · /path/to/workspace                      14:32:07
+──────────────────────────────────────────────────────────────────────────
+  REPO   BRANCH         SYNC     CHANGES   STATE
+▸ api    main           ✓        clean
+  web    feature/login  ↑2 ↓0    +1 ~3
+  infra  main           ↓4       ?2        ⚠ rebasing
+──────────────────────────────────────────────────────────────────────────
+ 1 clean · 2 dirty · 1 behind
+ ↑/↓ select · enter detail · r refresh · f fetch · p pull · P push · c commit · m merge · t tidy · q quit
+```
+
+| Key | Action |
+|-----|--------|
+| `↑`/`↓` (`j`/`k`) | Move the selection |
+| `enter` | Toggle a detail pane (`status -sb` + recent commits) for the selected repo |
+| `r` | Refresh now |
+| `f` / `p` | Fetch / pull all repos (inline, with a summary) |
+| `P` | Push all (drops to a full view so you can watch the output) |
+| `c` | Commit all — prompts for a message |
+| `m` | Merge a branch into all repos — prompts for the branch |
+| `t` | Run `monogit tidy` (orphan-branch cleanup) |
+| `q` / `Ctrl-C` | Quit (always restores your terminal) |
+
 ### `monogit checkout <branch> [-b]`
 
 Switch (or, with `-b`, create) branches across all repos.
@@ -147,8 +177,11 @@ Only repos that actually commit are listed. Enable it per-workspace with `"commi
 | Option | Description |
 |--------|-------------|
 | `-m, --message <msg>` | Commit message (repeatable; opens an editor if omitted) |
-| `-a` | Stage all modified/deleted tracked files |
+| `-a` | Stage all modified/deleted **tracked** files |
+| `-A, --all-files` | Stage **everything**, including untracked files (`git add -A`) |
 | `--link` / `--no-link` | Force linking on/off for this commit (overrides config) |
+
+> Voice "commit message …" uses `-A` (commits everything, including new files), since that's the natural spoken intent.
 
 ### `monogit show [change-id]`
 
@@ -166,7 +199,7 @@ Accepts an id prefix, and `--json` for machine-readable output.
 
 ### `monogit push / pull / fetch [remote] [branch]`
 
-Sync with remotes.
+Sync with remotes. With no remote given, `monogit push` publishes the current branch to **origin** and sets up tracking (`git push -u origin HEAD`) — so it works even on a fresh branch with no upstream yet, instead of failing.
 
 ### `monogit branch [branch] [-d|-D]`
 
@@ -266,6 +299,74 @@ Generate or install completion for `bash`, `zsh`, `fish`, or `powershell`.
 
 Start the [MCP](https://modelcontextprotocol.io) server (JSON-RPC over stdio) so an LLM/agent can drive the workspace. See below.
 
+### `monogit voice [phrase...]`
+
+Speak monogit commands **hands-free**. `monogit voice` listens continuously, uses voice-activity detection to find the pause at the end of each spoken command (no keypress), transcribes it **locally** (audio never leaves your machine), and runs it — then keeps listening for the next one. Say "stop" (or press Ctrl-C) to end the session.
+
+Write commands (commit, push, checkout…) ask for a **spoken** "yes" before running, so it stays both safe and hands-free. Reads run immediately.
+
+```bash
+monogit voice                       # 🎙️ continuous, hands-free listening
+monogit voice --once                # capture a single command, then exit
+monogit voice "show me the status"  # pass text directly (skips the mic)
+echo "push" | monogit voice --yes   # pipe text; --yes allows the write
+monogit voice "commit message fix login" --dry-run   # just show the mapping
+```
+
+A session looks like:
+
+```text
+🎙️  Listening continuously. Speak a command, pause, and it runs. Say "stop" or Ctrl-C to end.
+
+🗣  Heard: "what's the status"
+→ monogit status
+  ... dashboard ...
+🗣  Heard: "commit message fix the login redirect"
+→ monogit commit -am "fix the login redirect"
+   say "yes" to run, or "no" to skip…
+   🗣  "yes"
+  ... commits ...
+🗣  Heard: "stop"
+👋 Stopped listening.
+```
+
+Recognized phrases:
+
+| You say | It runs |
+|---------|---------|
+| "status" / "what's the status" | `status` |
+| "commit message \<text\>" | `commit -am "<text>"` |
+| "new branch \<name\>" ("slash" → `/`) | `checkout -b <name>` |
+| "checkout \<name\>" / "switch to \<name\>" | `checkout <name>` |
+| "merge \<name\>" | `merge <name>` into the current branch |
+| "push" / "pull" / "fetch" | sync |
+| "tidy" / "clean up branches" | `tidy` (dry-run — voice never deletes) |
+| "log" / "diff" / "show change" | history / changes / linked change |
+
+**First run sets itself up.** Speech recognition runs locally via [whisper.cpp](https://github.com/ggerganov/whisper.cpp), and monogit provisions it for you:
+
+- If the whisper.cpp binary is missing, monogit offers to `brew install whisper-cpp` (macOS).
+- The model is **downloaded on first use** (after a `Download? [Y/n]` prompt) and cached in `~/.cache/monogit/models/`, then reused across every workspace. Pass `--yes` to skip the prompt.
+- **Utterance detection** uses [`sox`](http://sox.sourceforge.net/)'s silence effect if present, otherwise `ffmpeg`'s `silencedetect` — so it auto-stops at the pause after each command. No keypress.
+
+Everything is overridable in `.monogit.json` if you'd rather bring your own:
+
+```json
+"voice": {
+  "model": "base.en",
+  "device": ":0",
+  "transcribe": "whisper-cli -m ~/models/ggml-base.en.bin -nt -f {audio}",
+  "confirm": true
+}
+```
+
+- `model` — `tiny.en`, `base.en`, or `small.en` (auto-downloaded).
+- `device` — ffmpeg input device index for the mic (default `:0` on macOS).
+- `transcribe` — your own command; `{audio}` is replaced with a temp WAV path (transcript via stdout or `{audio}.txt`).
+- `record` — a custom recorder. **It must stop itself at the end of an utterance** (e.g. include `sox`'s `silence` effect), since the loop runs it once per command.
+- `confirm` — set `false` to run write commands without the spoken yes/no.
+- `commitUntracked` — whether "commit" stages **everything** incl. new files (default `true`). The workspace-wide [`commit.untracked`](#️-configuration) covers both voice and watch.
+
 ---
 
 ## 🤖 Using monogit from an AI agent (MCP)
@@ -321,7 +422,8 @@ monogit stores its configuration in a `.monogit.json` file, discovered by walkin
     "frontend": ["web"]
   },
   "protected": ["develop", "release/*"],
-  "commit": { "link": true }
+  "commit": { "link": true },
+  "voice": { "transcribe": "whisper-cli -m ~/models/ggml-base.en.bin -nt -f {audio}" }
 }
 ```
 
@@ -329,6 +431,8 @@ monogit stores its configuration in a `.monogit.json` file, discovered by walkin
 - **`groups`** — named sets of repos for `--group`.
 - **`protected`** — branches `monogit tidy` will never delete (the current and default branches are always protected too).
 - **`commit.link`** — when `true`, `monogit commit` adds cross-repo `Monogit-Change-Id` trailers by default (override per-commit with `--no-link`).
+- **`commit.untracked`** — whether interactive commits (voice & watch) stage untracked files too. Defaults to `true` ("commit everything"); set `false` for tracked-only. (`voice.commitUntracked` is still honored for voice.)
+- **`voice`** — `record` / `transcribe` commands (with `{audio}`) and `confirm` for `monogit voice`.
 
 > **Tip:** Commit `.monogit.json` to share the workspace with your team — they can `monogit clone` to get every repo.
 
@@ -347,17 +451,22 @@ monogit/
 │   │   ├── show.js             # Look up a linked change across repos
 │   │   ├── visual.js           # Boxed output for log / diff / branch
 │   │   ├── dashboard.js        # Status dashboard table
+│   │   ├── watch.js            # Live interactive TUI (raw ANSI, no deps)
 │   │   ├── tidy.js             # Orphaned-branch scan & cleanup
 │   │   ├── exec.js             # Arbitrary git / shell passthrough
 │   │   ├── clone.js            # Clone missing repos from the manifest
 │   │   ├── repos.js            # repos list / add / remove
 │   │   ├── pr.js               # Open pull requests via gh
+│   │   ├── voice.js            # Speak a command (record → transcribe → run)
 │   │   ├── completion.js       # Completion scripts (bash/zsh/fish/pwsh)
 │   │   └── complete.js         # Dynamic branch completion logic
 │   ├── core/                   # Data-returning logic shared by CLI + MCP
 │   │   ├── commit.js           # Linked commit across repos
 │   │   ├── tidy.js             # Orphan scan & delete
 │   │   ├── changes.js          # Change-Id lookup
+│   │   ├── voice.js            # Speech-phrase → command grammar
+│   │   ├── voice-setup.js      # Whisper model download / binary detection
+│   │   ├── watch-render.js     # Pure TUI frame renderer
 │   │   └── pr.js               # Pull-request creation
 │   ├── mcp/
 │   │   └── server.js           # Dependency-free MCP server (stdio)

@@ -109,6 +109,14 @@ export async function repoHasPendingCommit(repoPath, { all = false, paths = [] }
   return lines.some((l) => l[0] !== ' ' && l[0] !== '?'); // staged-only
 }
 
+// Resolve `git push` arguments. With no remote, publish the current branch to
+// origin and set tracking (`-u origin HEAD`) so it works even when no upstream
+// is configured yet — and self-heals it for next time.
+export function resolvePushArgs(remote, branch) {
+  if (!remote) return ['-u', 'origin', 'HEAD'];
+  return branch ? [remote, branch] : [remote];
+}
+
 export async function getRemoteUrl(repoPath, remote = 'origin') {
   const r = await runGitCommand(repoPath, ['remote', 'get-url', remote]);
   return r.exitCode === 0 ? r.stdout.trim() : null;

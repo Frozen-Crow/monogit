@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { makeMatcher } from '../src/utils/match.js';
 import { mapLimit } from '../src/utils/concurrency.js';
 import { classifyResult } from '../src/commands/git-proxy.js';
+import { resolvePushArgs } from '../src/utils/git.js';
 
 test('makeMatcher supports exact names and * globs', () => {
   const m = makeMatcher(['main', 'release/*']);
@@ -34,6 +35,13 @@ test('mapLimit captures rejections without aborting', async () => {
   assert.equal(results[0].status, 'fulfilled');
   assert.equal(results[1].status, 'rejected');
   assert.equal(results[2].status, 'fulfilled');
+});
+
+test('resolvePushArgs defaults to origin HEAD with tracking when no remote', () => {
+  assert.deepEqual(resolvePushArgs(), ['-u', 'origin', 'HEAD']);
+  assert.deepEqual(resolvePushArgs(undefined, undefined), ['-u', 'origin', 'HEAD']);
+  assert.deepEqual(resolvePushArgs('origin'), ['origin']);
+  assert.deepEqual(resolvePushArgs('upstream', 'main'), ['upstream', 'main']);
 });
 
 test('classifyResult distinguishes ok, noop and fail', () => {

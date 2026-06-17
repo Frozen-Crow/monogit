@@ -1,1 +1,12 @@
-{"repos": ["."]}
+{
+  "repos": [
+    {
+      "path": "test-repos/a",
+      "branch": "main"
+    },
+    {
+      "path": "test-repos/b",
+      "branch": "main"
+    }
+  ]
+}

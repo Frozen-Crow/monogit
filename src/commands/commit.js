@@ -41,6 +41,7 @@ export async function commitCommand(paths, options = {}, command) {
     repos,
     message,
     all: Boolean(options.a),
+    addAll: Boolean(options.addAll || options.allFiles),
     paths: paths || [],
     link: doLink,
     concurrency: concurrencyFrom(options),

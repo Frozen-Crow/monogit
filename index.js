@@ -17,6 +17,9 @@ import { reposListCommand, reposAddCommand, reposRemoveCommand } from './src/com
 import { prCommand } from './src/commands/pr.js';
 import { commitCommand } from './src/commands/commit.js';
 import { showCommand } from './src/commands/show.js';
+import { resolvePushArgs } from './src/utils/git.js';
+import { voiceCommand } from './src/commands/voice.js';
+import { watchCommand } from './src/commands/watch.js';
 
 function collectMessage(value, previous) {
   previous.push(value);
@@ -113,7 +116,8 @@ repoOpts(
     .description('Commit across all linked repositories (opens an editor if -m is omitted)')
     .argument('[paths...]', 'files to commit')
     .option('-m, --message <message>', 'commit message (repeatable for paragraphs)', collectMessage, [])
-    .option('-a', 'stage all modified/deleted files')
+    .option('-a', 'stage all modified/deleted tracked files')
+    .option('-A, --all-files', 'stage everything including untracked files (git add -A)')
     .option('--link', 'add cross-repo Change-Id trailers')
     .option('--no-link', 'do not add cross-repo Change-Id trailers')
 ).action(async (paths, options, command) => {
@@ -128,6 +132,26 @@ repoOpts(
     .argument('[change-id]', 'the change id (defaults to the most recent)')
     .option('--json', 'output machine-readable JSON')
 ).action(showCommand);
+
+// Watch (live interactive dashboard with quick actions)
+repoOpts(
+  program
+    .command('watch')
+    .description('Live, interactive dashboard of all repos with quick actions')
+    .option('--interval <seconds>', 'auto-refresh interval (default 5)')
+).action(watchCommand);
+
+// Voice (speak a command; local STT + grammar)
+program
+  .command('voice')
+  .description('Speak commands hands-free (continuous, local STT). Pass/pipe text to skip the mic.')
+  .argument('[phrase...]', 'transcript to interpret (skips recording)')
+  .option('--once', 'capture a single command instead of listening continuously')
+  .option('--dry-run', 'interpret and print the command without running it')
+  .option('-y, --yes', 'skip confirmation for write commands')
+  .action(async (phrase, options) => {
+    await voiceCommand(phrase, options);
+  });
 
 // MCP server (lets LLMs/agents drive monogit over stdio)
 program
@@ -165,8 +189,7 @@ repoOpts(
     .argument('[remote]', 'the remote name')
     .argument('[branch]', 'the branch name')
 ).action(async (remote, branch, options) => {
-  const args = [remote, branch].filter(Boolean);
-  await gitProxyCommand('push', args, options);
+  await gitProxyCommand('push', resolvePushArgs(remote, branch), options);
 });
 
 // Pull
