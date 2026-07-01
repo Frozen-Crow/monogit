@@ -4,13 +4,12 @@ import ora from 'ora';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { findGitRepos, isGitRepo, initGitRepo, getRemoteUrl, getCurrentBranch } from '../utils/git.js';
-import { writeConfig } from '../utils/config.js';
+import { writeConfig, parseList } from '../utils/config.js';
+import { MODELS, DEFAULT_MODEL } from '../core/voice-setup.js';
 
 async function listTopLevelDirs(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
-  return entries
-    .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
-    .map((e) => e.name);
+  return entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name);
 }
 
 async function toEntry(root, rel) {
@@ -18,6 +17,61 @@ async function toEntry(root, rel) {
   const remote = await getRemoteUrl(abs);
   const branch = await getCurrentBranch(abs);
   return { path: rel, ...(remote ? { remote } : {}), ...(branch ? { branch } : {}) };
+}
+
+// Pure: assemble .monogit.json from init answers, writing only non-default values.
+export function assembleInitConfig(repos, { link, untracked, protectedInput, groups, voice } = {}) {
+  const config = { repos };
+
+  const commit = {};
+  if (link) commit.link = true; // default is off, so only record when enabled
+  if (untracked === false) commit.untracked = false; // default is on
+  if (Object.keys(commit).length) config.commit = commit;
+
+  const prot = parseList(protectedInput);
+  if (prot.length) config.protected = prot;
+
+  if (groups && Object.keys(groups).length) config.groups = groups;
+  if (voice && Object.keys(voice).length) config.voice = voice;
+
+  return config;
+}
+
+async function promptGroups(repoNames) {
+  const groups = {};
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { name } = await inquirer.prompt([
+      { type: 'input', name: 'name', message: 'Group name (blank to finish):', default: '' },
+    ]);
+    if (!name.trim()) break;
+    const { members } = await inquirer.prompt([
+      { type: 'checkbox', name: 'members', message: `Repos in "${name.trim()}":`, choices: repoNames },
+    ]);
+    if (members.length) groups[name.trim()] = members;
+  }
+  return groups;
+}
+
+async function promptVoice() {
+  const a = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'model',
+      message: 'Whisper model for voice control:',
+      choices: Object.keys(MODELS),
+      default: DEFAULT_MODEL,
+    },
+    { type: 'confirm', name: 'confirm', message: 'Ask for a spoken "yes" before write commands?', default: true },
+    { type: 'input', name: 'device', message: 'Mic device index for ffmpeg (blank = default):', default: '' },
+  ]);
+
+  const voice = {};
+  if (a.model && a.model !== DEFAULT_MODEL) voice.model = a.model;
+  if (!a.confirm) voice.confirm = false;
+  const dev = a.device.trim();
+  if (dev) voice.device = dev.startsWith(':') ? dev : `:${dev}`;
+  return voice;
 }
 
 export async function initCommand(options = {}) {
@@ -40,9 +94,9 @@ export async function initCommand(options = {}) {
     return;
   }
 
-  const questions = [];
+  const repoQuestions = [];
   if (gitRepos.length > 0) {
-    questions.push({
+    repoQuestions.push({
       type: 'checkbox',
       name: 'linkedRepos',
       message: 'Select existing Git repositories to link:',
@@ -51,7 +105,7 @@ export async function initCommand(options = {}) {
     });
   }
   if (nonGitDirs.length > 0) {
-    questions.push({
+    repoQuestions.push({
       type: 'checkbox',
       name: 'initRepos',
       message: 'Select non-Git folders to initialize and link:',
@@ -59,8 +113,7 @@ export async function initCommand(options = {}) {
     });
   }
 
-  const answers = await inquirer.prompt(questions);
-
+  const answers = await inquirer.prompt(repoQuestions);
   const selected = [...(answers.linkedRepos || [])];
 
   if (answers.initRepos && answers.initRepos.length > 0) {
@@ -77,8 +130,55 @@ export async function initCommand(options = {}) {
   const repos = [];
   for (const rel of selected) repos.push(await toEntry(root, rel));
 
-  await writeConfig({ repos }, path.join(root, '.monogit.json'));
+  // ---- workspace options ----
+  console.log(chalk.cyan('\n⚙️  Workspace options\n'));
+  const core = await inquirer.prompt([
+    { type: 'confirm', name: 'link', message: 'Link commits across repos with a shared Change-Id?', default: true },
+    {
+      type: 'confirm',
+      name: 'untracked',
+      message: 'Include untracked (new) files when committing via voice/watch?',
+      default: true,
+    },
+    {
+      type: 'input',
+      name: 'protectedInput',
+      message: 'Branches tidy should never delete (comma-separated, blank = none):',
+      default: '',
+    },
+    { type: 'confirm', name: 'advanced', message: 'Configure repo groups & voice now?', default: false },
+  ]);
+
+  let groups = {};
+  let voice = {};
+  if (core.advanced) {
+    if (repos.length > 0) {
+      console.log(chalk.cyan('\n🏷  Groups (blank name to skip/finish)\n'));
+      groups = await promptGroups(repos.map((r) => r.path));
+    }
+    console.log(chalk.cyan('\n🎙  Voice\n'));
+    voice = await promptVoice();
+  }
+
+  const config = assembleInitConfig(repos, {
+    link: core.link,
+    untracked: core.untracked,
+    protectedInput: core.protectedInput,
+    groups,
+    voice,
+  });
+
+  await writeConfig(config, path.join(root, '.monogit.json'));
 
   console.log(chalk.green.bold('\n✅ Configuration saved to .monogit.json'));
-  console.log(chalk.gray(`Linked ${repos.length} repositories.\n`));
+  console.log(chalk.gray(`Linked ${repos.length} repositories.`));
+  const extras = [
+    config.commit?.link && 'commit linking',
+    config.commit?.untracked === false && 'tracked-only commits',
+    config.protected && `${config.protected.length} protected branch(es)`,
+    Object.keys(groups).length && `${Object.keys(groups).length} group(s)`,
+    Object.keys(voice).length && 'voice settings',
+  ].filter(Boolean);
+  if (extras.length) console.log(chalk.gray(`Configured: ${extras.join(', ')}.`));
+  console.log('');
 }

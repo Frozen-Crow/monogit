@@ -102,7 +102,14 @@ monogit pull --except docs
 
 ### `monogit init [--depth <n>]`
 
-Interactively scan for and link repositories. Records remotes so the workspace can be re-cloned later.
+Interactively scan for and link repositories (recording remotes so the workspace can be re-cloned later), then set up workspace options. After picking repos, `init` asks:
+
+- **Commit linking** — add cross-repo `Change-Id` trailers by default (`commit.link`).
+- **Untracked files** — whether voice/watch commits stage new files (`commit.untracked`).
+- **Protected branches** — branches `tidy` will never delete (`protected`).
+- **Advanced** (opt-in) — define named repo **groups** for `--group`, and **voice** settings (Whisper model, mic device, spoken confirmation).
+
+Only non-default answers are written, so `.monogit.json` stays minimal.
 
 ### `monogit status [--full] [--json]`
 
