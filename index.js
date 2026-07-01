@@ -20,6 +20,9 @@ import { showCommand } from './src/commands/show.js';
 import { resolvePushArgs } from './src/utils/git.js';
 import { voiceCommand } from './src/commands/voice.js';
 import { watchCommand } from './src/commands/watch.js';
+import { linkCommand, unlinkCommand } from './src/commands/link.js';
+import { releaseCommand } from './src/commands/release.js';
+import { ciCommand } from './src/commands/ci.js';
 
 function collectMessage(value, previous) {
   previous.push(value);
@@ -286,6 +289,45 @@ repoOpts(
 repoOpts(
   program.command('clone').description('Clone any linked repos that have a remote but are missing locally')
 ).action(cloneCommand);
+
+// Link (wire shared packages to their local checkouts across repos)
+repoOpts(
+  program
+    .command('link')
+    .description('[beta] Link a shared package into repos (guided), or link all declared deps if no package given')
+    .argument('[package]', 'path to a package folder, or a package name in the workspace')
+    .option('--into <repos>', 'comma-separated repos to link into (skips the prompt)')
+    .option('--dev', 'add as a devDependency instead of a dependency')
+    .option('--file', 'declare a file:/link: path dependency (auto for unpublished/private packages)')
+    .option('--status', 'show the cross-repo package graph without linking')
+).action((packageArg, options) => linkCommand(packageArg, options));
+
+// Unlink (restore registry versions)
+repoOpts(
+  program.command('unlink').description('[beta] Undo `monogit link` and restore registry versions')
+).action(unlinkCommand);
+
+// Release (coordinated version bump + optional publish of shared packages)
+repoOpts(
+  program
+    .command('release')
+    .description('[beta] Bump shared package versions, update dependents, and commit as one linked change')
+    .option('--bump <level>', 'major | minor | patch (default patch)')
+    .option('--version <version>', 'set an explicit version instead of bumping')
+    .option('--tag', 'create a git tag per package (name@version)')
+    .option('--publish', 'publish each package to its registry after committing')
+    .option('--dry-run', 'show the release plan without changing anything')
+    .option('-y, --yes', 'skip confirmation prompts')
+).action(releaseCommand);
+
+// CI (make a single-repo checkout buildable in CI / deploys)
+program
+  .command('ci')
+  .description('[beta] Correct local package links for CI/deploys — `hydrate` (clone siblings) or `resolve` (self-contained git deps)')
+  .argument('<mode>', 'hydrate | resolve')
+  .option('--ref <ref>', 'git ref to use for the shared packages')
+  .option('--dry-run', 'show what resolve would change without writing')
+  .action((mode, options) => ciCommand(mode, options));
 
 // PR (open pull requests via the GitHub CLI)
 repoOpts(

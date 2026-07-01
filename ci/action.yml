@@ -1,0 +1,32 @@
+name: 'monogit ci'
+description: 'Correct monogit shared-package links for CI and deploys (hydrate or resolve to git deps).'
+author: 'Frozen Crow'
+branding:
+  icon: 'git-branch'
+  color: 'green'
+
+inputs:
+  mode:
+    description: 'resolve (rewrite path deps to self-contained git deps) or hydrate (clone sibling packages)'
+    required: false
+    default: 'resolve'
+  ref:
+    description: 'Git ref to use for the shared packages (overrides the recorded ref)'
+    required: false
+  working-directory:
+    description: 'Directory of the repo to correct (defaults to the workspace root)'
+    required: false
+    default: '.'
+  version:
+    description: 'Version of @frozencrow/monogit to run'
+    required: false
+    default: 'latest'
+
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: >-
+        npx --yes -p @frozencrow/monogit@${{ inputs.version }} monogit ci ${{ inputs.mode }}
+        ${{ inputs.ref && format('--ref {0}', inputs.ref) || '' }}

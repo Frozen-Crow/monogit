@@ -13,6 +13,15 @@ export async function noReposNotice(options = {}) {
   }
 }
 
+// One-line notice for beta features. Silence with MONOGIT_NO_BETA_WARNINGS=1.
+export function betaNotice(feature) {
+  if (process.env.MONOGIT_NO_BETA_WARNINGS) return;
+  console.log(
+    chalk.yellow(`\n🧪 ${feature} is beta`) +
+      chalk.gray(' — please report issues at https://github.com/Frozen-Crow/monogit/issues')
+  );
+}
+
 export const DEFAULT_CONCURRENCY = 8;
 
 export function concurrencyFrom(options = {}) {

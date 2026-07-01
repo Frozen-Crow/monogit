@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "linkme": {
+      "path": "../linkme",
+      "remote": "git@github.com:Frozen-Crow/monogit-linkme.git"
+    }
+  }
+}

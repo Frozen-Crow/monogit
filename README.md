@@ -19,6 +19,7 @@ monogit gives you a monorepo workflow without a monorepo. Run git operations acr
 - **Pull Requests** — Open PRs across every repo with one command (via the GitHub CLI)
 - **Arbitrary Commands** — `exec` any git command or `run` any shell command everywhere
 - **Workspace Manifest** — Record remotes so a teammate can `clone` the whole workspace in one step
+- **Shared Packages** 🧪 _beta_ — `link` shared libraries across repos, `release` them as one coordinated change, and correct the links for CI/deploys with `ci hydrate|resolve` (+ a GitHub Action)
 - **Targeting** — Scope any command to a subset of repos with `--only`, `--except`, or named `--group`s
 - **Parallel & Resilient** — Commands run concurrently (bounded); one repo failing won't block the others
 - **Works Anywhere in the Tree** — Like git, monogit finds your workspace from any subdirectory
@@ -294,6 +295,91 @@ monogit repos add ./api      # link a repo (records its remote)
 monogit repos remove api     # unlink (files untouched)
 ```
 
+### `monogit link` / `monogit unlink` · `monogit release` 🧪 _beta_
+
+> **Beta.** `link`, `unlink`, and `release` are new. **Graph discovery and the release plan/commit are covered by tests and stable**; the per-package-manager link execution (`npm`/`pnpm`/`yarn`) and `--publish` are still being hardened across ecosystems. Try them on a non-critical workspace first, and please [report anything odd](https://github.com/Frozen-Crow/monogit/issues). Each command prints a one-line beta notice — silence it with `MONOGIT_NO_BETA_WARNINGS=1`.
+
+#### `monogit link` / `monogit unlink`
+
+Wire **shared packages** to their local checkouts across repos — the monorepo "edit the lib, see it downstream instantly" workflow, without a monorepo. It links using each repo's own package manager (npm / pnpm / yarn — detected per repo from its lockfile).
+
+**Guided — introduce a package into repos (the usual starting point):**
+
+```bash
+monogit link ./shared          # or a package name: monogit link @acme/shared
+```
+
+You point at a shared package; monogit asks **which repos to link it into**. For each repo you pick, it **adds the dependency** to that repo's `package.json` (if it isn't there yet) and links `node_modules` to the local checkout. Skip the prompt with `--into`:
+
+```bash
+monogit link @acme/shared --into api,web       # non-interactive
+monogit link ./shared --into api --dev         # add as a devDependency
+```
+
+**Auto — link everything already declared:**
+
+```bash
+monogit link            # link every consumer that already lists a workspace package as a dep
+monogit link --status   # just show the graph (who provides / consumes what)
+monogit unlink          # undo and restore registry versions
+```
+
+**Published vs unpublished packages.** monogit writes a committable dependency spec, and picks the right kind automatically:
+
+- **Published** (npm or a private registry): a version range like `^1.2.3`. The link is a **local-only dev override** in `node_modules`; `unlink` removes it and keeps the declared version. CI and teammates resolve the version from the registry.
+- **Unpublished / `"private": true`**: a **path dependency** — `file:../shared` (npm/yarn) or `link:../shared` (pnpm). This is portable *within a monogit workspace* because every repo is a sibling, so `npm install` works for any teammate who has the workspace (no registry needed). Force this with `--file` even for non-private packages. For people who clone a single repo without the workspace, use a git dependency instead (`git+ssh://…/shared.git#v1.2.3`).
+
+`monogit release` works either way: it bumps versions, updates consumer specs, and commits as one linked change. `--publish` is only for registry packages — npm blocks publishing anything marked `"private": true`, so for internal packages you just skip it (the version bump + git tag is your release).
+
+monogit orchestrates the links and versions; it does **not** do resolution, lockfiles, or a registry — that stays with your package manager.
+
+#### `monogit release [--bump <level>]`
+
+Cut a **coordinated release** of your shared packages: bump each shared library's version, update every in-workspace consumer's dependency range, and commit it all as **one linked change** (a cross-repo changeset, tied together by a `Monogit-Change-Id`). Only packages that something in the workspace depends on are bumped — leaf apps just get their specs updated.
+
+```bash
+monogit release --bump minor --dry-run   # preview the plan, change nothing
+monogit release --bump patch             # apply + commit as one linked change
+monogit release --version 2.0.0 --tag    # explicit version + git tag per package
+monogit release --bump minor --publish   # also publish to each package's registry
+```
+
+| Option | Description |
+|--------|-------------|
+| `--bump <level>` | `major` / `minor` / `patch` (default `patch`) |
+| `--version <v>` | Set an explicit version instead of bumping |
+| `--tag` | Create a `name@version` git tag per package |
+| `--publish` | Publish each package to its registry (extra confirmation) |
+| `--dry-run` | Show the plan without changing anything |
+| `-y, --yes` | Skip confirmation prompts |
+
+#### `monogit ci <hydrate | resolve>` — make single-repo CI & deploys work
+
+Local links (`file:../shared`, `link:../shared`) are a workspace convenience — but a CI job or a deploy build usually checks out **one** repo, with no sibling to resolve them against, so `npm ci` breaks. `monogit ci` corrects that. When you `link` a path dependency, monogit records its git source in a committed `.monogit-deps.json`, which a lone checkout uses to reconstitute.
+
+- **`monogit ci hydrate`** — clone the sibling packages this repo links to (at their recorded refs), then run your install normally. Faithful to the workspace; good for **CI test runs**.
+- **`monogit ci resolve`** — rewrite `file:`/`link:` path deps into **git dependencies** (`git+ssh://…#ref`) so the repo installs with no siblings and no workspace. Ideal for **deploy builds** (Docker, serverless). `--dry-run` previews.
+
+```yaml
+# GitHub Actions — deploy build
+- uses: Frozen-Crow/monogit/ci@v1
+  with: { mode: resolve }
+- run: npm ci --omit=dev
+
+# …or a CI test run that keeps the workspace shape
+- uses: Frozen-Crow/monogit/ci@v1
+  with: { mode: hydrate }
+- run: npm ci && npm test
+```
+
+```dockerfile
+# Dockerfile — self-contained deploy image
+COPY package.json .monogit-deps.json ./
+RUN npx --yes @frozencrow/monogit ci resolve && npm ci --omit=dev
+```
+
+Works on any CI via `npx @frozencrow/monogit ci <mode>` — the GitHub Action is just a thin wrapper. Override the ref with `--ref <tag>` (e.g. pin to the release tag your `monogit release` created).
+
 ### `monogit log` / `monogit diff`
 
 View recent history / unstaged changes for every repo in bordered boxes.
@@ -442,6 +528,8 @@ monogit stores its configuration in a `.monogit.json` file, discovered by walkin
 - **`voice`** — `record` / `transcribe` commands (with `{audio}`) and `confirm` for `monogit voice`.
 
 > **Tip:** Commit `.monogit.json` to share the workspace with your team — they can `monogit clone` to get every repo.
+
+There's also a second, per-repo file: **`.monogit-deps.json`** 🧪 _beta_ — written into a consumer repo by `monogit link` when it adds a `file:`/`link:` shared dependency, recording that package's git source (remote + ref). **Commit it** — `monogit ci hydrate`/`resolve` read it to reconstitute the workspace in single-repo CI and deploy builds.
 
 ---
 
