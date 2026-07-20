@@ -22,6 +22,7 @@ monogit gives you a monorepo workflow without a monorepo. Run git operations acr
 - **Shared Packages** 🧪 _beta_ — `link` shared libraries across repos, `release` them as one coordinated change, and correct the links for CI/deploys with `ci hydrate|resolve` (+ a GitHub Action)
 - **Targeting** — Scope any command to a subset of repos with `--only`, `--except`, or named `--group`s
 - **Parallel & Resilient** — Commands run concurrently (bounded); one repo failing won't block the others
+- **Ordered Pushes** — Declare `dependsOn` and `push` runs as a dependency graph, optionally waiting for each repo's CI (`--wait-ci`) before its dependents
 - **Works Anywhere in the Tree** — Like git, monogit finds your workspace from any subdirectory
 - **MCP Server** — Drive the whole workspace from an LLM/agent via a built-in Model Context Protocol server
 - **Voice Commands** — Hands-free, continuous voice control in the terminal via local, offline speech recognition
@@ -209,6 +210,25 @@ Accepts an id prefix, and `--json` for machine-readable output.
 
 Sync with remotes. With no remote given, `monogit push` publishes the current branch to **origin** and sets up tracking (`git push -u origin HEAD`) — so it works even on a fresh branch with no upstream yet, instead of failing.
 
+**Ordered pushes (`dependsOn`).** By default monogit pushes all repos in parallel — but if a repo's build depends on another (e.g. `api` builds against the freshly-published `shared`), a parallel push is a race. Declare the order in `.monogit.json`:
+
+```json
+"repos": [
+  { "path": "shared" },
+  { "path": "api", "dependsOn": ["shared"] },
+  { "path": "web", "dependsOn": ["api"] }
+]
+```
+
+`monogit push` then runs as a **dependency graph**: independent repos still push in parallel, but a repo waits for its dependencies first. If a dependency's push fails, its dependents are **skipped** (never pushed into a broken state), and cycles are rejected.
+
+By default a dependent waits for its dependency's **push to complete**. Add **`--wait-ci`** to instead wait for the dependency's **CI to pass** before pushing dependents — which actually prevents the build race (pushing only *triggers* CI; `--wait-ci` waits for it to finish). Needs the `gh` CLI; if a dependency's CI fails, its dependents are skipped.
+
+```bash
+monogit push               # dependency order; each dependent waits for its deps' push
+monogit push --wait-ci     # each dependent waits for its deps' CI to go green first
+```
+
 ### `monogit branch [branch] [-d|-D]`
 
 List branches (no args), or create / delete a branch across all repos.
@@ -336,6 +356,8 @@ monogit orchestrates the links and versions; it does **not** do resolution, lock
 #### `monogit release [--bump <level>]`
 
 Cut a **coordinated release** of your shared packages: bump each shared library's version, update every in-workspace consumer's dependency range, and commit it all as **one linked change** (a cross-repo changeset, tied together by a `Monogit-Change-Id`). Only packages that something in the workspace depends on are bumped — leaf apps just get their specs updated.
+
+**Deploy triggers for path-linked consumers.** A consumer linked via a `file:`/`link:` path spec has no version in its `package.json` to bump — so a release would leave that repo with *no diff*, and its CI/deploy wouldn't fire even though the shared code changed. To fix that, `release` writes the new version into the consumer's **`.monogit-deps.json`** and commits it. That's a real change in the consumer repo, so its deploy triggers. (Version-range consumers already get a `package.json` diff, so they don't need this.)
 
 ```bash
 monogit release --bump minor --dry-run   # preview the plan, change nothing
@@ -520,7 +542,7 @@ monogit stores its configuration in a `.monogit.json` file, discovered by walkin
 }
 ```
 
-- **`repos`** — a relative path string, or an object with `path` plus an optional `remote`/`branch` (used by `monogit clone`).
+- **`repos`** — a relative path string, or an object with `path` plus an optional `remote`/`branch` (used by `monogit clone`) and `dependsOn` (an array of repo names, for ordered pushes — see below).
 - **`groups`** — named sets of repos for `--group`.
 - **`protected`** — branches `monogit tidy` will never delete (the current and default branches are always protected too).
 - **`commit.link`** — when `true`, `monogit commit` adds cross-repo `Monogit-Change-Id` trailers by default (override per-commit with `--no-link`).

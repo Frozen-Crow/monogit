@@ -17,7 +17,7 @@ import { reposListCommand, reposAddCommand, reposRemoveCommand } from './src/com
 import { prCommand } from './src/commands/pr.js';
 import { commitCommand } from './src/commands/commit.js';
 import { showCommand } from './src/commands/show.js';
-import { resolvePushArgs } from './src/utils/git.js';
+import { pushCommand } from './src/commands/push.js';
 import { voiceCommand } from './src/commands/voice.js';
 import { watchCommand } from './src/commands/watch.js';
 import { linkCommand, unlinkCommand } from './src/commands/link.js';
@@ -184,16 +184,15 @@ repoOpts(
     .option('--json', 'output machine-readable JSON')
 ).action(statusCommand);
 
-// Push
+// Push (respects per-repo `dependsOn` ordering; --wait-ci waits for CI between waves)
 repoOpts(
   program
     .command('push')
-    .description('Run git push in all linked repositories')
+    .description('Run git push in all linked repositories (in dependency order when `dependsOn` is set)')
     .argument('[remote]', 'the remote name')
     .argument('[branch]', 'the branch name')
-).action(async (remote, branch, options) => {
-  await gitProxyCommand('push', resolvePushArgs(remote, branch), options);
-});
+    .option('--wait-ci', 'wait for a repo’s CI to pass before pushing its dependents (needs gh)')
+).action((remote, branch, options) => pushCommand(remote, branch, options));
 
 // Pull
 repoOpts(

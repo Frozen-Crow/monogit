@@ -8,7 +8,45 @@ import { runGitCommand } from '../utils/git.js';
 import { loadPackageGraph } from '../core/packages.js';
 import { planRelease } from '../core/release.js';
 import { performCommit } from '../core/commit.js';
+import { DEPS_MANIFEST, readDepsManifest, writeDepsManifest } from '../core/ci.js';
 import { noReposNotice, betaNotice } from '../utils/ui.js';
+
+// Consumers linked to a bumped package via a path spec (file:/link:) don't get a
+// package.json diff on release — so record the new version in their .monogit-deps.json.
+// That gives the consumer repo a real change to commit, which triggers its CI/deploy.
+async function computeManifestBumps(graph, bumps) {
+  const byPkg = new Map(bumps.map((b) => [b.package, b]));
+  const seen = new Set();
+  const updates = [];
+  for (const e of graph.edges) {
+    const bump = byPkg.get(e.package);
+    if (!bump) continue;
+    const key = `${e.consumer}::${e.package}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const manifest = await readDepsManifest(e.consumerDir);
+    const entry = manifest.packages?.[e.package];
+    if (!entry || entry.version === bump.newVersion) continue;
+    updates.push({
+      repo: e.consumer,
+      dir: e.consumerDir,
+      package: e.package,
+      oldVersion: entry.version || null,
+      newVersion: bump.newVersion,
+    });
+  }
+  return updates;
+}
+
+async function applyManifestBumps(updates) {
+  for (const u of updates) {
+    const manifest = await readDepsManifest(u.dir);
+    if (manifest.packages?.[u.package]) {
+      manifest.packages[u.package].version = u.newVersion;
+      await writeDepsManifest(u.dir, manifest);
+    }
+  }
+}
 
 async function patchPackageJson(dir, mutate) {
   const file = path.join(dir, 'package.json');
@@ -17,7 +55,7 @@ async function patchPackageJson(dir, mutate) {
   await fs.writeFile(file, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
 }
 
-function printPlan(plan) {
+function printPlan(plan, manifestBumps) {
   console.log(chalk.cyan.bold('\n📦 Release plan\n'));
   for (const b of plan.bumps) {
     console.log(
@@ -30,6 +68,12 @@ function printPlan(plan) {
       console.log(
         `    ${chalk.blue(u.repo)} ${chalk.gray(u.field)} ${u.package}: ${chalk.gray(u.oldSpec)} → ${u.newSpec}`
       );
+    }
+  }
+  if (manifestBumps.length) {
+    console.log(chalk.gray('\n  deploy triggers (.monogit-deps.json):'));
+    for (const u of manifestBumps) {
+      console.log(`    ${chalk.blue(u.repo)} ${u.package}: ${chalk.gray(u.oldVersion || '—')} → ${u.newVersion}`);
     }
   }
   console.log('');
@@ -57,7 +101,8 @@ export async function releaseCommand(options = {}) {
     return;
   }
 
-  printPlan(plan);
+  const manifestBumps = await computeManifestBumps(graph, plan.bumps);
+  printPlan(plan, manifestBumps);
 
   if (options.dryRun) {
     console.log(chalk.gray('Dry run — no files changed. Re-run without --dry-run to apply.\n'));
@@ -85,15 +130,21 @@ export async function releaseCommand(options = {}) {
       if (pkg[u.field] && pkg[u.field][u.package] !== undefined) pkg[u.field][u.package] = u.newSpec;
     });
   }
+  // path-linked consumers: record the new version so they get a deploy-triggering diff
+  await applyManifestBumps(manifestBumps);
 
-  // 2) commit as one linked change (only package.json in each affected repo)
-  const affected = new Set([...plan.bumps.map((b) => b.repo), ...plan.consumerUpdates.map((u) => u.repo)]);
+  // 2) commit as one linked change (package.json + .monogit-deps.json in each affected repo)
+  const affected = new Set([
+    ...plan.bumps.map((b) => b.repo),
+    ...plan.consumerUpdates.map((u) => u.repo),
+    ...manifestBumps.map((u) => u.repo),
+  ]);
   const affectedRepos = repos.filter((r) => affected.has(r.name));
   const message = `release: ${plan.bumps.map((b) => `${b.package}@${b.newVersion}`).join(', ')}`;
   const { changeId } = await performCommit({
     repos: affectedRepos,
     message,
-    paths: ['package.json'],
+    paths: ['package.json', DEPS_MANIFEST],
     link: true,
   });
   console.log(chalk.green(`\n✔ Committed release across ${affectedRepos.length} repo(s)`) + (changeId ? chalk.gray(` (${changeId})`) : ''));

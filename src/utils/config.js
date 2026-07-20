@@ -62,13 +62,14 @@ export function normalizeEntry(entry) {
     path: entry.path,
     ...(entry.remote ? { remote: entry.remote } : {}),
     ...(entry.branch ? { branch: entry.branch } : {}),
+    ...(Array.isArray(entry.dependsOn) && entry.dependsOn.length ? { dependsOn: entry.dependsOn } : {}),
   };
 }
 
 // Serialize back, keeping the minimal string form when there's no metadata.
 function serializeEntry(entry) {
   const n = normalizeEntry(entry);
-  if (!n.remote && !n.branch) return n.path;
+  if (!n.remote && !n.branch && !n.dependsOn) return n.path;
   return n;
 }
 
@@ -118,6 +119,7 @@ export async function resolveRepos(options = {}, startDir) {
     path: root ? path.resolve(root, e.path) : path.resolve(e.path),
     remote: e.remote || null,
     branch: e.branch || null,
+    dependsOn: e.dependsOn || [],
     root,
   }));
 }
